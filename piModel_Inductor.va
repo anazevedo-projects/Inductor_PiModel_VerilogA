@@ -1,0 +1,142 @@
+`include "constant.vams"
+`include "disciplines.vams"
+
+module piInductor(port1, port2);
+
+inout port1, port2;
+electrical port1, port2;
+electrical n1, n2;
+ground gnd;
+
+parameter real pi = 3.141592653589793;
+
+parameter f = 2.1e9;
+parameter real miu = 4*3.14159*1e-07;
+parameter real E0 = 8.854187817e-12;
+parameter real t = 2.8e-06;
+parameter real Rsheet = 10e-03;
+parameter real R0 = 0.01*2.8e-06;
+parameter real toxide = 5.42e-06;
+parameter real t_M_underpass = 0.4e-06;
+parameter real toxide_Munderpass = (5.42e-06)) - t_M_underpass - 4.76e-6; 
+parameter real Erox = 4;
+parameter real Eox = E0*Erox;
+parameter real Ersub = 11.9;
+parameter real Tsub = 700e-06;
+parameter real Sub_resistiv = 2800;
+
+parameter real W = 5e-06;
+parameter real Nlados = 6;
+parameter real n = 3;
+parameter real S = 5e-06;
+parameter real dOut = 332.60e-06;
+
+real Ls;
+real Cs;
+real Rs;
+real Cox;
+real Csi;
+real Rsi;
+
+function getLs;
+input Nlados, n, W, S, dOut;
+real Nlados, n, W, S, dOut, din, dAvg, px, k1, k2;
+	
+	begin
+		din = dOut - 2*n*W-2*(n-1)*S;
+    	dAvg = 0.5*(dOut+din);
+    	px = (dOut-din)/(dOut+din);
+    	if (Nlados == 4) begin
+	        k1 = 2.34;
+	        k2 = 2.75;
+	    end
+	    if (Nlados == 6) begin
+	        k1 = 2.33;
+	        k2 = 3.82;
+	    end
+	    if (Nlados == 8) begin
+	        k1 = 2.25;
+	        k2 = 3.55;
+	    end
+	    getLs = (n**2*dAvg*k1*miu)/(1+k2*px);
+	end
+endfunction
+
+
+function get_rs;
+input Nlados, n, W, S, dOut, f;
+real Nlados, n, W, S, dOut, f, din, dAvg, delta, teff, l;
+	begin
+		din = dOut - 2*n*W-2*(n-1)*S;
+	    dAvg = 0.5*(dOut+din);
+	    delta = sqrt(R0/(pi*f*miu));
+	    teff = 1 - exp(-t/delta);
+	    l = Nlados*dAvg*n*$tan(pi/Nlados);
+	    get_rs = (l*R0)/(W*delta*teff);
+	end
+endfunction
+
+
+function get_cs;
+input Nlados, n, W, S, dOut;
+real Nlados, n, W, S, dOut;
+	begin
+		get_cs = ((n-1)*W**2*(Eox/toxide_Munderpass));
+	end
+endfunction
+
+function get_cox;
+input Nlados, n, W, S, dOut;
+real Nlados, n, W, S, dOut, din, dAvg, l;
+	begin
+		din = dOut - 2*n*W-2*(n-1)*S;
+	    dAvg = 0.5*(dOut+din);
+	    l = Nlados*dAvg*n*tan(pi/Nlados);
+	    get_cox = 0.5*l*W*(Eox/toxide);    
+	end
+endfunction
+
+function get_csi;
+input Nlados, n, W, S, dOut;
+real Nlados, n, W, S, dOut, din, dAvg, l;
+	begin
+		din = dOut - 2*n*W-2*(n-1)*S;
+	    dAvg = 0.5*(dOut+din);
+	    l = Nlados*dAvg*n*tan(pi/Nlados);
+	    get_csi = 0.5*l*W*(Esub/Tsub);
+	end
+endfunction
+
+
+function get_rsi;
+input Nlados, n, W, S, dOut;
+real Nlados, n, W, S, dOut, din, dAvg, l;
+	begin
+		din = dOut - 2*n*W-2*(n-1)*S;
+	    dAvg = 0.5*(dOut+din);
+	    l = Nlados*dAvg*n*np.tan(np.pi/Nlados);
+	    return 2*Tsub*(Sub_resistiv/(l*W));
+	end
+endfunction
+
+branch (port1, port2) b1, b2;
+
+analog begin
+
+    Ls = getLs(Nlados, n, W, S, dOut);
+    Rs = get_rs(Nlados, n, W, S, dOut, f);
+    Cs = get_cs(Nlados, n, W, S, dOut);
+    Cox = get_cox(Nlados, n, W, S, dOut);
+    Csi = get_csi(Nlados, n, W, S, dOut);
+    Rsi = get_rsi(Nlados, n, W, S, dOut);
+
+    I(n2) <+ V(n2)/Rsi + Csi*ddt(V(n2));
+    I(port1, n2) <+ Cox*ddt(V(port1, n2));
+    I(n1) <+ V(n1)/Rsi + Csi*ddt(V(n1));
+    I(port2, n1) <+ Cox*ddt(V(port2, n1));
+    V(b1) <+ Ls*ddt(I(b1)) + Rs*I(b1);
+    I(b2) <+ Cs*ddt(V(b2));
+
+end
+
+endmodule
